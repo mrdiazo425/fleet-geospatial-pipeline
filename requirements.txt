@@ -1,0 +1,14 @@
+geopandas==1.0.1
+pyogrio==0.10.0
+shapely==2.0.6
+pandas==2.2.3
+pyproj==3.7.0
+psycopg[binary,pool]==3.2.3
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.2
+httpx==0.28.0
+streamlit==1.40.2
+folium==0.18.0
+streamlit-folium==0.23.2
+openpyxl==3.1.5

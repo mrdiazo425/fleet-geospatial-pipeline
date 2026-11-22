@@ -1,0 +1,118 @@
+name: fleet-geospatial-pipeline
+
+x-db-env: &db-env
+  DB_HOST: db
+  DB_PORT: 5432
+  DB_NAME: ${POSTGRES_DB:-fleet}
+  DB_USER: ${POSTGRES_USER:-fleet}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
+
+# Every Python service runs the same image, built once. Sharing the tag also
+# guarantees on-demand services (tests) always run the code that was just built.
+x-app: &app
+  build: .
+  image: fleet-geospatial-pipeline-app:latest
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fleet}
+      POSTGRES_USER: ${POSTGRES_USER:-fleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
+    ports:
+      - "${DB_HOST_PORT:-5433}:5432"   # 5433 avoids clashing with a local PostgreSQL
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot job: creates schemas/tables and loads the reference GIS layers.
+  bootstrap:
+    <<: *app
+    command: ["python", "-m", "fleet_pipeline.bootstrap"]
+    environment: *db-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Bronze: receives telemetry packets and serves them with id masking.
+  api:
+    <<: *app
+    command: ["uvicorn", "fleet_pipeline.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *db-env
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-admin-secret}
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Simulated IoT/AVL devices: replay recent history, then report live.
+  simulator:
+    <<: *app
+    command: ["python", "-m", "fleet_pipeline.simulator.runner"]
+    environment:
+      <<: *db-env
+      API_URL: http://api:8000
+      SIM_INTERVAL_S: ${SIM_INTERVAL_S:-5}
+      SIM_BACKFILL_MINUTES: ${SIM_BACKFILL_MINUTES:-120}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Silver + Gold: enriches new reports and publishes them every few seconds.
+  pipeline:
+    <<: *app
+    command: ["python", "-m", "fleet_pipeline.pipeline.runner"]
+    environment:
+      <<: *db-env
+      PIPELINE_INTERVAL_S: ${PIPELINE_INTERVAL_S:-10}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Gold consumer: interactive map + KPIs at http://localhost:8501
+  dashboard:
+    <<: *app
+    command:
+      - streamlit
+      - run
+      - src/fleet_pipeline/dashboard/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+    environment:
+      <<: *db-env
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-admin-secret}
+      ANALYST_UI_PASSWORD: ${ANALYST_UI_PASSWORD:-analista}
+    ports:
+      - "${DASHBOARD_HOST_PORT:-8501}:8501"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # On demand only:  docker compose run --rm tests
+  tests:
+    <<: *app
+    command: ["pytest", "-v"]
+    environment: *db-env
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    profiles: ["tools"]
+
+volumes:
+  db_data:
