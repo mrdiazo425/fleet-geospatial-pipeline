@@ -106,3 +106,10 @@ derivadas de datos abiertos:
 | `equipamientos_especiales` | 2.092 colegios, jardines, universidades, hospitales y clínicas | © OpenStreetMap contributors (ODbL), vía Geofabrik |
 
 La telemetría es simulada; ningún dato corresponde a vehículos o personas reales.
+
+## Uso de asistencia de IA
+
+Este proyecto se desarrolló con apoyo de Claude (Anthropic) como asistente de programación
+para escribir el código, las pruebas y los borradores de la documentación. La obtención y
+preparación de los datos, las decisiones de diseño y las validaciones, ejecutando
+y probando el sistema, son de la autora.
