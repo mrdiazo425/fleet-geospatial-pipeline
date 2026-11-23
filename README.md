@@ -11,7 +11,8 @@ Visualizaciones del tablero interactivo.
 
 ![Tablero: mapa de rutas, mapa de calor de infracciones e indicadores](docs/img/tablero-mapa-indicadores.png)
 
-![[Pasted image 20261122191944.png]]
+<img width="1908" height="900" alt="image" src="https://github.com/user-attachments/assets/aa21004c-2563-4028-bf12-1f7dbcb6b139" />
+
 
 
 ## Qué hace
