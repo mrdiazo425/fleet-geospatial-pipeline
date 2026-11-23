@@ -157,6 +157,114 @@ Los agregados son vistas materializadas:
 | `gold.infraction_hotspots` | Infracciones agregadas en grilla de 250 m |
 | `gold.road_speed_profile` | Velocidad real observada por vía y hora: costo de tramo para optimización de rutas |
 
+### 4.5 Modelo de datos
+
+Las relaciones dibujadas con línea continua son llaves foráneas en la base. Las punteadas
+son relaciones lógicas, sin llave foránea: Bronce acepta reportes de cualquier vehículo con
+identificador válido, aunque todavía no esté en el catálogo, para no perder datos; y Oro es
+una copia desnormalizada que se consulta sola.
+
+```mermaid
+erDiagram
+    GEOFENCES ||--o{ GEOFENCE_PARTS : "se subdivide en"
+    VEHICLES ||--|| VEHICLE_ROUTES : "tiene asignada"
+    VEHICLES ||..o{ TELEMETRY_RAW : "reporta"
+    TELEMETRY_RAW ||--|| TELEMETRY_ENRICHED : "se enriquece en"
+    GEOFENCES ||--o{ TELEMETRY_ENRICHED : "zona de siniestralidad"
+    ROADS ||..o{ TELEMETRY_ENRICHED : "via mas cercana"
+    TELEMETRY_ENRICHED ||--o{ ALERTS : "genera"
+    GEOFENCES ||--o{ ALERTS : "ocurre en"
+    TELEMETRY_ENRICHED ||..|| FACT_TELEMETRY : "se publica en"
+
+    GEOFENCES {
+        int geofence_id PK
+        text zone_code UK
+        text geofence_type "urban_perimeter o high_accident"
+        smallint speed_limit_kmh
+        geometry geom "MultiPolygon 9377, GiST"
+    }
+    GEOFENCE_PARTS {
+        int geofence_part_id PK
+        int geofence_id FK
+        geometry geom "Polygon 9377, GiST"
+    }
+    ROADS {
+        int road_id PK
+        text road_class
+        smallint speed_limit_kmh
+        geometry geom "LineString 9377, GiST"
+    }
+    VEHICLES {
+        text vehicle_id PK
+        numeric tank_capacity_l
+        numeric efficiency_km_l
+    }
+    VEHICLE_ROUTES {
+        int route_id PK
+        text vehicle_id FK
+        float route_length_m "columna generada"
+        geometry geom "LineString 9377, GiST"
+    }
+    TELEMETRY_RAW {
+        bigint telemetry_id PK
+        text vehicle_id "unico con reported_at"
+        timestamptz reported_at "BRIN"
+        float latitude
+        float longitude
+        real speed_kmh
+        real fuel_level_pct
+        timestamptz ingested_at
+        boolean is_backfill
+        geometry geom "Point 4326 generado, GiST"
+    }
+    TELEMETRY_ENRICHED {
+        bigint telemetry_id PK, FK
+        geometry geom_9377 "Point 9377, GiST"
+        boolean in_urban_perimeter
+        int high_accident_geofence_id FK
+        int road_id
+        smallint speed_limit_kmh "limite aplicado"
+        text speeding_severity
+        real step_distance_m
+        text harsh_event
+        real route_remaining_km
+        real fuel_autonomy_km
+        boolean fuel_insufficient
+    }
+    ALERTS {
+        bigint alert_id PK
+        bigint telemetry_id FK
+        text alert_type "unico con telemetry_id"
+        text severity
+        int geofence_id FK
+        real observed
+        real threshold
+        geometry geom_9377 "Point 9377, GiST"
+    }
+    FACT_TELEMETRY {
+        bigint telemetry_id PK
+        text vehicle_id "B-tree con reported_at"
+        timestamptz reported_at "BRIN"
+        float easting_m
+        float northing_m
+        boolean is_speeding
+        text geofence_name
+        text road_name
+        real fuel_autonomy_km
+        real arrival_delay_s
+        geometry geom "Point 4326, GiST y GiST parcial"
+    }
+```
+
+Cada tabla pertenece a un esquema según su capa:
+
+| Esquema | Tablas |
+|---|---|
+| `reference` | `geofences`, `geofence_parts`, `roads`, `facilities`, `vehicles`, `vehicle_routes` |
+| `bronze` | `telemetry_raw` |
+| `silver` | `telemetry_enriched`, `alerts`, `pipeline_state` |
+| `gold` | `fact_telemetry` y las vistas materializadas `driver_score_daily`, `infraction_hotspots` y `road_speed_profile` |
+
 ## 5. Índices espaciales
 
 ### 5.1 Qué índice para qué consulta

@@ -9,11 +9,11 @@ siniestralidad, malla vial y equipamientos de salud y educación.
 
 Visualizaciones del tablero interactivo.
 
-![[Pasted image 20261122182557.png]]
+![Tablero: mapa de rutas, mapa de calor de infracciones e indicadores](docs/img/tablero-mapa-indicadores.png)
 
-![[Pasted image 20261122182614.png]]
+![[Pasted image 20261122191944.png]]
 
-Link de acceso al video: 
+
 ## Qué hace
 
 | Capa | Qué resuelve |
